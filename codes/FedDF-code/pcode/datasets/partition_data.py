@@ -95,6 +95,8 @@ class DataSampler(object):
 class DataPartitioner(object):
     """ Partitions a dataset into different chuncks. """
 
+    # data是数据集, partition_sizes是每个用户划分数据集多少比例的数据。比如100个client，每个client划分0.01的数据集
+    # partition_type是划分方式，比如迪利克雷
     def __init__(
         self, conf, data, partition_sizes, partition_type, consistent_indices=True
     ):
@@ -156,23 +158,23 @@ class DataPartitioner(object):
                 )
             ]
         elif self.partition_type == "non_iid_dirichlet":
-            num_classes = len(np.unique(self.data.targets))
-            num_indices = len(indices)
+            num_classes = len(np.unique(self.data.targets)) # 本数据集具有的类别数
+            num_indices = len(indices) # 数据集有多少个数据样本
             n_workers = len(self.partition_sizes)
 
             list_of_indices = build_non_iid_by_dirichlet(
-                random_state=self.conf.random_state,
+                random_state=self.conf.random_state,    # conf.random_state的定义在main.py -> init_config()中
                 indices2targets=np.array(
                     [
                         (idx, target)
-                        for idx, target in enumerate(self.data.targets)
+                        for idx, target in enumerate(self.data.targets) # 给每一个label编号
                         if idx in indices
                     ]
                 ),
                 non_iid_alpha=self.conf.non_iid_alpha,
-                num_classes=num_classes,
-                num_indices=num_indices,
-                n_workers=n_workers,
+                num_classes=num_classes,    # 被划分的数据集有多少个类别
+                num_indices=num_indices,    # 数据集有多少个样本
+                n_workers=n_workers,        # 划分给多少个用户
             )
             indices = functools.reduce(lambda a, b: a + b, list_of_indices)
         else:
@@ -197,7 +199,7 @@ class DataPartitioner(object):
 def build_non_iid_by_dirichlet(
     random_state, indices2targets, non_iid_alpha, num_classes, num_indices, n_workers
 ):
-    n_auxi_workers = 10
+    n_auxi_workers = 10 # 每次划分n_auxi_workers个用户
     assert n_auxi_workers <= n_workers
 
     # random shuffle targets indices.
@@ -236,12 +238,13 @@ def build_non_iid_by_dirichlet(
 
         # get the corresponding idx_batch.
         min_size = 0
+        # 拥有最少样本数量的用户其样本数必须多于平均的一半(0.50 * _targets_size / _n_workers)，否则就重新划分
         while min_size < int(0.50 * _targets_size / _n_workers):
             _idx_batch = [[] for _ in range(_n_workers)]
-            for _class in range(num_classes):
+            for _class in range(num_classes):   # 遍历每个类别
                 # get the corresponding indices in the original 'targets' list.
-                idx_class = np.where(_targets[:, 1] == _class)[0]
-                idx_class = _targets[idx_class, 0]
+                idx_class = np.where(_targets[:, 1] == _class)[0]   # 找到_class类别在_targets中对应的索引
+                idx_class = _targets[idx_class, 0]  # 找到_class在数据集中对应的索引
 
                 # sampling.
                 try:
@@ -249,6 +252,8 @@ def build_non_iid_by_dirichlet(
                         np.repeat(non_iid_alpha, _n_workers)
                     )
                     # balance
+                    # 如果某个client已经划分的样本数量len(idx_j)大于每个用户平均拥有的样本数_targets_size / _n_workers，则本类
+                    # 就不再进行给其划分(p * False = 0)
                     proportions = np.array(
                         [
                             p * (len(idx_j) < _targets_size / _n_workers)
@@ -258,7 +263,7 @@ def build_non_iid_by_dirichlet(
                     proportions = proportions / proportions.sum()
                     proportions = (np.cumsum(proportions) * len(idx_class)).astype(int)[
                         :-1
-                    ]
+                    ]   # 此时proportions中记录的是切分点
                     _idx_batch = [
                         idx_j + idx.tolist()
                         for idx_j, idx in zip(
