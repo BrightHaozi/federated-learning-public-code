@@ -23,8 +23,8 @@ class Master(object):
         self.conf = conf
 
         # some initializations.
-        self.client_ids = list(range(1, 1 + conf.n_clients))
-        self.world_ids = list(range(1, 1 + conf.n_participated))
+        self.client_ids = list(range(1, 1 + conf.n_clients))  # 标定client的编号
+        self.world_ids = list(range(1, 1 + conf.n_participated))    # 标定参与训练的编号
 
         # create model as well as their corresponding state_dicts.
         _, self.master_model = create_model.define_model(
